@@ -1,159 +1,186 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import ClickableStoryText from './ClickableStoryText';
+import { useState, useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify';
 
 interface StoryNarratorProps {
   html: string;
 }
 
 export default function StoryNarrator({ html }: StoryNarratorProps) {
-  const [isPaused, setIsPaused] = useState(true);
-  const [utterance, setUtterance] = useState<SpeechSynthesisUtterance | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoice, setSelectedVoice] = useState<string>('');
-  const [currentPosition, setCurrentPosition] = useState(0);
+  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const wordsRef = useRef<string[]>([]);
+  const htmlWordsRef = useRef<HTMLElement[]>([]);
 
-  const stripHtml = (html: string) => {
-    const tmp = document.createElement('DIV');
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '';
-  };
-
+  // Initialize available voices
   useEffect(() => {
-    const synth = window.speechSynthesis;
-    const text = stripHtml(html);
-    const u = new SpeechSynthesisUtterance(text);
-    
-    u.onboundary = (event) => {
-      setCurrentPosition(event.charIndex);
-    };
-
-    u.onend = () => {
-      setIsPaused(true);
-      setCurrentPosition(0);
-    };
-
-    setUtterance(u);
-
     const loadVoices = () => {
-      const availableVoices = synth.getVoices().filter(voice => voice.lang.startsWith('en'));
+      const availableVoices = window.speechSynthesis.getVoices();
       setVoices(availableVoices);
-      if (availableVoices.length > 0) {
-        setSelectedVoice(availableVoices[0].name);
-      }
+      setSelectedVoice(availableVoices[0]); // Set default voice
     };
 
     loadVoices();
-    if (speechSynthesis.onvoiceschanged !== undefined) {
-      speechSynthesis.onvoiceschanged = loadVoices;
-    }
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
 
-    return () => {
-      synth.cancel();
-    };
-  }, [html]);
-
-  const speakWord = (word: string) => {
-    const synth = window.speechSynthesis;
-    synth.cancel(); // Stop any ongoing speech
+  useEffect(() => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = DOMPurify.sanitize(html);
     
-    const wordUtterance = new SpeechSynthesisUtterance(word);
-    if (selectedVoice) {
-      const voice = voices.find(v => v.name === selectedVoice);
-      if (voice) wordUtterance.voice = voice;
-    }
-    
-    synth.speak(wordUtterance);
-  };
-
-  const handlePlay = () => {
-    const synth = window.speechSynthesis;
-
-    if (utterance) {
-      if (isPaused) {
-        synth.cancel();
-        
-        if (currentPosition > 0) {
-          const text = stripHtml(html);
-          const newUtterance = new SpeechSynthesisUtterance(text.slice(currentPosition));
-          
-          if (selectedVoice) {
-            const voice = voices.find(v => v.name === selectedVoice);
-            if (voice) newUtterance.voice = voice;
-          }
-          
-          newUtterance.onboundary = (event) => {
-            setCurrentPosition(currentPosition + event.charIndex);
-          };
-
-          newUtterance.onend = () => {
-            setIsPaused(true);
-            setCurrentPosition(0);
-          };
-
-          synth.speak(newUtterance);
-        } else {
-          if (selectedVoice) {
-            const voice = voices.find(v => v.name === selectedVoice);
-            if (voice) utterance.voice = voice;
-          }
-          synth.speak(utterance);
-        }
+    const walkTextNodes = (node: Node, words: string[] = [], elements: HTMLElement[] = []) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const textWords = node.textContent?.trim().split(/\s+/) || [];
+        textWords.forEach(word => {
+          words.push(word);
+          elements.push(node.parentElement as HTMLElement);
+        });
       }
-      setIsPaused(false);
+      node.childNodes.forEach(child => walkTextNodes(child, words, elements));
+      return { words, elements };
+    };
+
+    const { words, elements } = walkTextNodes(tempDiv);
+    wordsRef.current = words;
+    htmlWordsRef.current = elements;
+
+    initializeUtterance(words.join(' '));
+  }, [html, selectedVoice]);
+
+  const initializeUtterance = (text: string) => {
+    utteranceRef.current = new SpeechSynthesisUtterance(text);
+    if (selectedVoice) {
+      utteranceRef.current.voice = selectedVoice;
+    }
+    
+    utteranceRef.current.onboundary = (event) => {
+      if (event.name === 'word') {
+        setCurrentWordIndex(prev => prev + 1);
+      }
+    };
+
+    utteranceRef.current.onend = () => {
+      setIsPlaying(false);
+      setCurrentWordIndex(-1);
+    };
+  };
+
+  const stopNarration = () => {
+    speechSynthesis.cancel();
+    setIsPlaying(false);
+    setCurrentWordIndex(-1);
+  };
+
+  const togglePlay = () => {
+    if (isPlaying) {
+      speechSynthesis.pause();
+      setIsPlaying(false);
+    } else {
+      if (utteranceRef.current) {
+        if (speechSynthesis.paused) {
+          speechSynthesis.resume();
+        } else {
+          speechSynthesis.speak(utteranceRef.current);
+        }
+        setIsPlaying(true);
+      }
     }
   };
 
-  const handlePause = () => {
-    const synth = window.speechSynthesis;
-    synth.pause();
-    setIsPaused(true);
+  const speakWord = (word: string, index: number) => {
+    speechSynthesis.cancel();
+    setCurrentWordIndex(index);
+    const utterance = new SpeechSynthesisUtterance(word);
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+    utterance.onend = () => {
+      setCurrentWordIndex(-1);
+    };
+    speechSynthesis.speak(utterance);
   };
 
-  const handleStop = () => {
-    const synth = window.speechSynthesis;
-    synth.cancel();
-    setIsPaused(true);
-    setCurrentPosition(0);
-  };
+  const renderHighlightedHtml = () => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = DOMPurify.sanitize(html);
 
-  const handleVoiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedVoice(e.target.value);
-    handleStop();
+    let wordIndex = 0;
+    const highlightWords = (node: Node): Node => {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+        const fragment = document.createDocumentFragment();
+        const words = node.textContent.split(/(\s+)/);
+        
+        words.forEach(word => {
+          if (word.trim()) {
+            const span = document.createElement('span');
+            span.textContent = word;
+            span.style.cursor = 'pointer';
+            span.setAttribute('data-word-index', wordIndex.toString());
+            if (wordIndex === currentWordIndex) {
+              span.className = 'bg-yellow-200 transition-colors duration-200';
+            }
+            span.onclick = () => speakWord(word, wordIndex);
+            fragment.appendChild(span);
+            wordIndex++;
+          } else {
+            fragment.appendChild(document.createTextNode(word));
+          }
+        });
+        return fragment;
+      }
+      
+      node.childNodes.forEach((child, i) => {
+        const newChild = highlightWords(child);
+        if (newChild !== child) {
+          node.replaceChild(newChild, child);
+        }
+      });
+      
+      return node;
+    };
+
+    const processedContent = highlightWords(tempDiv);
+    return { __html: processedContent.innerHTML };
   };
 
   return (
-    <div>
-      <div className="flex items-center gap-4 mb-6">
+    <div className="space-y-4">
+      <div className="flex gap-4 items-center">
         <select
-          value={selectedVoice}
-          onChange={handleVoiceChange}
-          className="px-3 py-2 border rounded-lg"
+          className="px-4 py-2 border rounded-lg"
+          onChange={(e) => {
+            const voice = voices.find(v => v.name === e.target.value);
+            setSelectedVoice(voice || null);
+          }}
+          value={selectedVoice?.name}
         >
-          {voices.map(voice => (
+          {voices.map((voice) => (
             <option key={voice.name} value={voice.name}>
               {voice.name}
             </option>
           ))}
         </select>
-        
         <button
-          onClick={isPaused ? handlePlay : handlePause}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          onClick={togglePlay}
+          className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
         >
-          {isPaused ? 'Play' : 'Pause'}
+          {isPlaying ? 'Pause' : 'Play'}
         </button>
-        
         <button
-          onClick={handleStop}
-          className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+          onClick={stopNarration}
+          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
         >
           Stop
         </button>
       </div>
-
-      <ClickableStoryText html={html} onWordClick={speakWord} />
+      <div 
+        className="prose max-w-none"
+        dangerouslySetInnerHTML={renderHighlightedHtml()}
+      />
     </div>
   );
 } 

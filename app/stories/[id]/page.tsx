@@ -62,7 +62,7 @@ export default async function StoryPage({
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-md p-8">
+        <div className="bg-white rounded-xl shadow-md p-8 prose-lg prose-purple">
           <StoryNarrator html={story.story_html} />
         </div>
       </div>
