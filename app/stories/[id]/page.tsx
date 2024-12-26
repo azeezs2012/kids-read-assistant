@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Story } from "@/lib/types";
+import StoryNarrator from '@/app/components/StoryNarrator';
 
 export default async function StoryPage({
   params,
@@ -19,7 +20,6 @@ export default async function StoryPage({
     return redirect("/sign-in");
   }
 
-  // Fetch the story with its level
   const { data: story } = await supabase
     .from('stories')
     .select(`
@@ -63,10 +63,7 @@ export default async function StoryPage({
         )}
 
         <div className="bg-white rounded-xl shadow-md p-8">
-          <div 
-            className="prose prose-lg max-w-none"
-            dangerouslySetInnerHTML={{ __html: story.story_html }}
-          />
+          <StoryNarrator html={story.story_html} />
         </div>
       </div>
     </div>
