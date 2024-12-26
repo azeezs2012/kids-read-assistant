@@ -199,4 +199,22 @@ create policy "Anyone can view story images"
 create policy "Authenticated users can delete story images"
   on storage.objects for delete
   to authenticated
-  using (bucket_id = 'stories'); 
+  using (bucket_id = 'stories');
+
+-- Create a trigger to create a profile for new users
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, role, full_name)
+  values (new.id, 'children', new.raw_user_meta_data->>'full_name');
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Drop the trigger if it exists
+drop trigger if exists on_auth_user_created on auth.users;
+
+-- Create the trigger
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user(); 

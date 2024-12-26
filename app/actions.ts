@@ -22,15 +22,21 @@ export const signUpAction = async (formData: FormData) => {
     );
   }
 
+  console.log("signing up");
+
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       emailRedirectTo: `${origin}/auth/callback`,
+      data: {
+        full_name: email.split('@')[0],
+      }
     },
   });
 
   if (error) {
+    console.log("signing up error");
     console.error(error.code + " " + error.message);
     return encodedRedirect("error", "/sign-up", error.message);
   } else {
