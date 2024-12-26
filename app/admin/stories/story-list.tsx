@@ -153,6 +153,12 @@ export default function StoryList({
                 </td>
                 <td className="px-6 py-4 border-b">
                   <div className="space-x-2">
+                    <a
+                      href={`/stories/${story.id}`}
+                      className="bg-blue-500 text-white px-3 py-1 rounded inline-block"
+                    >
+                      View
+                    </a>
                     <button
                       onClick={() => setEditingStory(story)}
                       className="bg-gray-500 text-white px-3 py-1 rounded"
