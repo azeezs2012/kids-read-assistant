@@ -92,16 +92,29 @@ export default function StoryNarrator({ html }: StoryNarratorProps) {
   };
 
   const speakWord = (word: string, index: number) => {
+    // Cancel any ongoing speech and reset state
     speechSynthesis.cancel();
-    setCurrentWordIndex(index);
-    const utterance = new SpeechSynthesisUtterance(word);
+    setIsPlaying(false);
+    
+    // Create new utterance for the single word
+    const wordUtterance = new SpeechSynthesisUtterance(word);
+    
+    // Apply selected voice if available
     if (selectedVoice) {
-      utterance.voice = selectedVoice;
+      wordUtterance.voice = selectedVoice;
     }
-    utterance.onend = () => {
+
+    // Set up event handlers
+    wordUtterance.onstart = () => {
+      setCurrentWordIndex(index);
+    };
+
+    wordUtterance.onend = () => {
       setCurrentWordIndex(-1);
     };
-    speechSynthesis.speak(utterance);
+
+    // Speak the word
+    speechSynthesis.speak(wordUtterance);
   };
 
   const renderHighlightedHtml = () => {
@@ -119,11 +132,13 @@ export default function StoryNarrator({ html }: StoryNarratorProps) {
             const span = document.createElement('span');
             span.textContent = word;
             span.style.cursor = 'pointer';
-            span.setAttribute('data-word-index', wordIndex.toString());
-            if (wordIndex === currentWordIndex) {
-              span.className = 'bg-yellow-200 transition-colors duration-200';
-            }
-            span.onclick = () => speakWord(word, wordIndex);
+            // Add a distinctive class for clickable words
+            span.className = `clickable-word ${
+              wordIndex === currentWordIndex ? 'bg-yellow-200' : ''
+            } transition-colors duration-200`;
+            // Store the word and index as data attributes
+            span.dataset.word = word;
+            span.dataset.index = wordIndex.toString();
             fragment.appendChild(span);
             wordIndex++;
           } else {
@@ -146,6 +161,34 @@ export default function StoryNarrator({ html }: StoryNarratorProps) {
     const processedContent = highlightWords(tempDiv);
     return { __html: processedContent.innerHTML };
   };
+
+  // Add click handler using useEffect
+  useEffect(() => {
+    const handleWordClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.classList.contains('clickable-word')) {
+        const word = target.dataset.word;
+        const index = parseInt(target.dataset.index || '0', 10);
+        if (word) {
+          console.log('Word clicked:', word, index);
+          speakWord(word, index);
+        }
+      }
+    };
+
+    // Add click listener to the container
+    const container = document.querySelector('.prose');
+    if (container) {
+      container.addEventListener('click', handleWordClick);
+    }
+
+    return () => {
+      // Clean up listener
+      if (container) {
+        container.removeEventListener('click', handleWordClick);
+      }
+    };
+  }, []);
 
   return (
     <div className="space-y-4">
