@@ -35,6 +35,12 @@ export default async function DashboardPage() {
       >
         Admin Story Levels
       </Link>
+      <Link 
+        href="/admin/stories"
+        className="py-2 px-4 rounded-md no-underline bg-btn-background hover:bg-btn-background-hover"
+      >
+        Admin Stories
+      </Link>
     </div>
   );
 }
