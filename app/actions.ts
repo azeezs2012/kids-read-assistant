@@ -4,6 +4,9 @@ import { encodedRedirect } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import { UserRole } from '@/lib/types'
 
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
@@ -53,7 +56,7 @@ export const signInAction = async (formData: FormData) => {
     return encodedRedirect("error", "/sign-in", error.message);
   }
 
-  return redirect("/protected");
+  return redirect("/dashboard");
 };
 
 export const forgotPasswordAction = async (formData: FormData) => {
@@ -67,7 +70,7 @@ export const forgotPasswordAction = async (formData: FormData) => {
   }
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/callback?redirect_to=/protected/reset-password`,
+    redirectTo: `${origin}/auth/callback?redirect_to=/dashboard/reset-password`,
   });
 
   if (error) {
@@ -99,7 +102,7 @@ export const resetPasswordAction = async (formData: FormData) => {
   if (!password || !confirmPassword) {
     encodedRedirect(
       "error",
-      "/protected/reset-password",
+      "/dashboard/reset-password",
       "Password and confirm password are required",
     );
   }
@@ -107,7 +110,7 @@ export const resetPasswordAction = async (formData: FormData) => {
   if (password !== confirmPassword) {
     encodedRedirect(
       "error",
-      "/protected/reset-password",
+      "/dashboard/reset-password",
       "Passwords do not match",
     );
   }
@@ -119,12 +122,12 @@ export const resetPasswordAction = async (formData: FormData) => {
   if (error) {
     encodedRedirect(
       "error",
-      "/protected/reset-password",
+      "/dashboard/reset-password",
       "Password update failed",
     );
   }
 
-  encodedRedirect("success", "/protected/reset-password", "Password updated");
+  encodedRedirect("success", "/dashboard/reset-password", "Password updated");
 };
 
 export const signOutAction = async () => {
@@ -132,3 +135,70 @@ export const signOutAction = async () => {
   await supabase.auth.signOut();
   return redirect("/sign-in");
 };
+
+export async function updateProfile(profileData: {
+  full_name?: string
+  website?: string
+  role?: UserRole
+}) {
+  const supabase = await createClient()
+  
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return { error: 'Not authenticated' }
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        full_name: profileData.full_name,
+        website: profileData.website,
+        role: profileData.role,
+        updated_at: new Date().toISOString(),
+      })
+
+    if (error) {
+      console.error('Profile update error:', error)
+      return { error: error.message }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error in updateProfile:', error)
+    return { error: 'An error occurred while updating profile' }
+  }
+}
+
+export async function promoteToAdmin(userId: string) {
+  const supabase = await createClient()
+  
+  try {
+    const { error } = await supabase
+      .rpc('promote_to_admin', { user_id: userId })
+
+    if (error) {
+      return { error: error.message }
+    }
+    return { success: true }
+  } catch (error) {
+    return { error: 'An error occurred while promoting user' }
+  }
+}
+
+export async function demoteToChildren(userId: string) {
+  const supabase = await createClient()
+  
+  try {
+    const { error } = await supabase
+      .rpc('demote_to_children', { user_id: userId })
+
+    if (error) {
+      return { error: error.message }
+    }
+    return { success: true }
+  } catch (error) {
+    return { error: 'An error occurred while demoting user' }
+  }
+}
