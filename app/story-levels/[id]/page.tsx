@@ -62,7 +62,7 @@ export default async function StoryLevelPage({
             href="/dashboard"
             className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
           >
-            Back to Levels
+            Back to Dashboard
           </Link>
         </div>
 
